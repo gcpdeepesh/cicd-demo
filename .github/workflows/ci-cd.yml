@@ -5,7 +5,7 @@ on:
 jobs:
   build-and-deploy:
     # run on your self-hosted runner installed on Build EC2
-    runs-on: [ self-hosted, ec2, build ]
+    runs-on: [ self-hosted ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
