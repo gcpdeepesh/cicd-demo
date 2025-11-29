@@ -1,0 +1,38 @@
+name: CI-CD to EC2
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build-and-deploy:
+    # run on your self-hosted runner installed on Build EC2
+    runs-on: [ self-hosted, ec2, build ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Make build script executable
+        run: chmod +x ./build.sh
+      - name: Build artifact (produce site.tar.gz)
+        # set NAME env here or pass via repo secret
+        env:
+          NAME: ${{ secrets.DEPLOY_NAME }}   # safer: store name in repo secret or replace directly
+        run: ./build.sh
+      - name: Copy artifact to deploy server
+        env:
+          DEPLOY_USER: ec2-user               # replace if ubuntu
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}  # put deploy IP in repo secrets
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}   # private key contents stored as a secret
+        run: |
+          # write private key to file
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # copy artifact
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key dist/site.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/site.tar.gz
+          # ssh into deploy host and install artifact
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_HOST} <<'EOF'
+            sudo tar -xzf /tmp/site.tar.gz -C /tmp
+            sudo mv /tmp/index.html /var/www/html/index.html
+            sudo chown apache:apache /var/www/html/index.html || sudo chown www-data:www-data /var/www/html/index.html || true
+            sudo systemctl restart httpd || true
+            echo "Deployed!"
+          EOF
